@@ -67,39 +67,77 @@ function is_valid_phone($phone) {
 $input = json_decode(file_get_contents('php://input'), true);
 logMessage("Received update: " . json_encode($input));
 
-$callback = $input['callback_query'] ?? null;
 if ($callback) {
     $data = $callback['data'];
     $callback_id = $callback['id'];
     $from_id = $callback['from']['id'];
 
-    global $payments;
-
     if ($from_id == ADMIN_CHAT_ID) {
         if (strpos($data, 'approve_payment:') === 0) {
             $uid = substr($data, strlen('approve_payment:'));
-            if (isset($payments[$uid])) {
-                $payments[$uid]['status'] = 'approved';
-                savePayments($payments);
+            global $payments;
+            $payments[$uid]['status'] = 'approved';
+            savePayments($payments);
 
-                sendMessage($payments[$uid]['chat_id'], "Оплата підтверджена. Починаємо перевірку квитанцій.");
-                sendMessage(ADMIN_CHAT_ID, "Оплата користувача $uid підтверджена.");
+            sendMessage($payments[$uid]['chat_id'], "Оплата підтверджена. Починаємо перевірку квитанцій.");
+            sendMessage(ADMIN_CHAT_ID, "Оплата користувача $uid підтверджена.");
 
-                $url = "https://api.telegram.org/bot" . TELEGRAM_TOKEN . "/answerCallbackQuery";
-                $post = [
-                    'callback_query_id' => $callback_id,
-                    'text' => 'Оплата підтверджена',
-                    'show_alert' => false
-                ];
-                $ch = curl_init($url);
-                curl_setopt($ch, CURLOPT_POST, true);
-                curl_setopt($ch, CURLOPT_POSTFIELDS, $post);
-                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-                curl_exec($ch);
-                curl_close($ch);
-                exit;
-            }
+            // Відповідь на callback
+            $url = "https://api.telegram.org/bot" . TELEGRAM_TOKEN . "/answerCallbackQuery";
+            $post = [
+                'callback_query_id' => $callback_id,
+                'text' => 'Оплата підтверджена',
+                'show_alert' => false
+            ];
+            $ch = curl_init($url);
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $post);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_exec($ch);
+            curl_close($ch);
+            exit;
         }
+        if (strpos($data, 'reject_payment:') === 0) {
+            $uid = substr($data, strlen('reject_payment:'));
+            global $payments;
+            $payments[$uid]['status'] = 'rejected';
+            savePayments($payments);
+
+            sendMessage($payments[$uid]['chat_id'], "Оплата не підтверджена. Будь ласка, зв’яжіться з нами.");
+            sendMessage(ADMIN_CHAT_ID, "Оплата користувача $uid відхилена.");
+
+            // Відповідь на callback
+            $url = "https://api.telegram.org/bot" . TELEGRAM_TOKEN . "/answerCallbackQuery";
+            $post = [
+                'callback_query_id' => $callback_id,
+                'text' => 'Оплата відхилена',
+                'show_alert' => false
+            ];
+            $ch = curl_init($url);
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $post);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_exec($ch);
+            curl_close($ch);
+            exit;
+        }
+    } else {
+        // Якщо не адміністратор — відмовляємо у дії
+        $url = "https://api.telegram.org/bot" . TELEGRAM_TOKEN . "/answerCallbackQuery";
+        $post = [
+            'callback_query_id' => $callback_id,
+            'text' => 'У вас немає прав на цю дію.',
+            'show_alert' => true
+        ];
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $post);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_exec($ch);
+        curl_close($ch);
+        exit;
+            }
+        
         if (strpos($data, 'reject_payment:') === 0) {
             $uid = substr($data, strlen('reject_payment:'));
             if (isset($payments[$uid])) {
@@ -258,10 +296,41 @@ switch ($step) {
         sendMessage($chat_id, ($lang === 'ru' ? "Сколько квитанций хотите проверить?" : "How many receipts do you want to check?"));
         break;
 
-    case 'enter_receipt_count':
-        if (!is_numeric($text) || intval($text) < 1) {
-            sendMessage($chat_id, ($lang === 'ru' ? "Введите число больше 0." : "Enter a number greater than 0."));
-            break;
+   case 'enter_receipt_count':
+    if (!is_numeric($text) || intval($text) < 1) {
+        sendMessage($chat_id, ($lang === 'ru' ? "Введите число больше 0." : "Enter a number greater than 0."));
+        break;
+    }
+    $count = intval($text);
+    $users[$user_id]['receipt_count'] = $count;
+
+    // Записуємо суму до оплати
+    $users[$user_id]['amount_to_pay'] = $count * PRICE_PER_RECEIPT;
+
+    case 'confirm_payment':
+    $answer = mb_strtolower($text);
+    if (($lang === 'ru' && ($answer === 'да')) || ($lang === 'en' && $answer === 'yes')) {
+        $users[$user_id]['step'] = 'waiting_for_payment';
+        file_put_contents($user_data_file, json_encode($users, JSON_PRETTY_PRINT));
+        $sum = $users[$user_id]['amount_to_pay'];
+        $msg = ($lang === 'ru')
+            ? "Пожалуйста, отправьте $sum USDT на адрес:\n<code>" . USDT_ADDRESS . "</code>\n\nПосле оплаты нажмите кнопку ниже:"
+            : "Please send $sum USDT to the following address:\n<code>" . USDT_ADDRESS . "</code>\n\nAfter payment, click the button below:";
+        sendMessage($chat_id, $msg, [
+            'keyboard' => [
+                [($lang === 'ru') ? 'Я оплатил' : 'I have paid']
+            ],
+            'resize_keyboard' => true,
+            'one_time_keyboard' => true,
+        ]);
+    } else {
+        sendMessage($chat_id, ($lang === 'ru') ? "Платёж отменён. Напишите /start чтобы начать заново." : "Payment cancelled. Type /start to begin again.");
+        unset($users[$user_id]);
+        file_put_contents($user_data_file, json_encode($users, JSON_PRETTY_PRINT));
+    }
+    break;
+
+
         }
         $count = intval($text);
         $users[$user_id]['receipt_count'] = $count;
@@ -308,19 +377,42 @@ switch ($step) {
         break;
 
     case 'waiting_for_payment':
-        $confirm_text = ($lang === 'ru') ? 'я оплатил' : 'i have paid';
-        if (mb_strtolower($text) === $confirm_text) {
-            sendMessage($chat_id, ($lang === 'ru')
-                ? "Спасибо! Пожалуйста, отправьте ваши квитанции (в виде текста или фото)."
-                : "Thank you! Please send your receipts (as text or photo).");
-            $users[$user_id]['step'] = 'upload_receipts';
-            file_put_contents($user_data_file, json_encode($users, JSON_PRETTY_PRINT));
-        } else {
-            sendMessage($chat_id, ($lang === 'ru')
-                ? "Пожалуйста, подтвердите оплату нажав кнопку."
-                : "Please confirm payment by clicking the button.");
-        }
-        break;
+    $confirm_text = ($lang === 'ru') ? 'я оплатил' : 'i have paid';
+    if (mb_strtolower($text) === $confirm_text) {
+        sendMessage($chat_id, ($lang === 'ru') 
+            ? "Спасибо! Пожалуйста, отправьте ваши квитанции (в виде текста или фото)." 
+            : "Thank you! Please send your receipts (as text or photo).");
+
+        // Записуємо платіж у storage/payments.json
+        global $payments;
+        $payments[$user_id] = [
+            'status' => 'pending',
+            'chat_id' => $chat_id,
+            'amount' => $users[$user_id]['amount_to_pay'],
+            'timestamp' => time(),
+        ];
+        savePayments($payments);
+
+        // Відправляємо адміну повідомлення з кнопками підтвердження
+        $approveKeyboard = [
+            'inline_keyboard' => [
+                [
+                    ['text' => '✅ Підтвердити оплату', 'callback_data' => 'approve_payment:' . $user_id],
+                    ['text' => '❌ Відхилити оплату', 'callback_data' => 'reject_payment:' . $user_id]
+                ]
+            ]
+        ];
+        sendMessage(ADMIN_CHAT_ID, "Користувач $user_id заявив про оплату $".$users[$user_id]['amount_to_pay'], $approveKeyboard);
+
+        $users[$user_id]['step'] = 'upload_receipts';
+        file_put_contents($user_data_file, json_encode($users, JSON_PRETTY_PRINT));
+    } else {
+        sendMessage($chat_id, ($lang === 'ru') 
+            ? "Пожалуйста, подтвердите оплату нажав кнопку." 
+            : "Please confirm payment by clicking the button.");
+    }
+    break;
+
 
     case 'upload_receipts':
         if (isset($message['photo'])) {
