@@ -48,6 +48,7 @@ function sendMessage($chat_id, $text, $buttons = null) {
         'parse_mode' => 'HTML',
     ];
     if ($buttons !== null) {
+        // Якщо це inline клавіатура — кодуємо в JSON
         $data['reply_markup'] = json_encode($buttons);
     }
     $ch = curl_init($url);
@@ -55,15 +56,11 @@ function sendMessage($chat_id, $text, $buttons = null) {
     curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     $result = curl_exec($ch);
-
-    if (curl_errno($ch)) {
-        logMessage("Curl error: " . curl_error($ch));
-    }
-
     curl_close($ch);
     logMessage("Send to $chat_id: $text");
     return $result;
 }
+
 
 // --- Валидация email и телефона ---
 function is_valid_email($email) {
