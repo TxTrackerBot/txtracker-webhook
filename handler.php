@@ -197,4 +197,63 @@ switch ($step) {
 
     case 'confirm_payment':
         $answer = mb_strtolower($text);
-        if (($lang === 'ru' && ($answer === 'да')) || ($lang === 'en' && $answer === 'yes'))
+        if (($lang === 'ru' && ($answer === 'да')) || ($lang === 'en' && $answer === 'yes')) {     $users[$user_id]['step'] = 'waiting_for_payment';
+    file_put_contents($user_data_file, json_encode($users, JSON_PRETTY_PRINT));
+    $msg = ($lang === 'ru')
+        ? "Пожалуйста, отправьте $sum USDT на адрес:\n<code>" . USDT_ADDRESS . "</code>\n\nПосле оплаты нажмите кнопку ниже:"
+        : "Please send $sum USDT to the following address:\n<code>" . USDT_ADDRESS . "</code>\n\nAfter payment, click the button below:";
+    sendMessage($chat_id, $msg, [
+        'keyboard' => [
+            [($lang === 'ru') ? 'Я оплатил' : 'I have paid']
+        ],
+        'resize_keyboard' => true,
+        'one_time_keyboard' => true,
+    ]);
+} else {
+    sendMessage($chat_id, ($lang === 'ru') ? "Платёж отменён. Напишите /start чтобы начать заново." : "Payment cancelled. Type /start to begin again.");
+    unset($users[$user_id]);
+    file_put_contents($user_data_file, json_encode($users, JSON_PRETTY_PRINT));
+}
+break;
+
+case 'waiting_for_payment':
+    $confirm_text = ($lang === 'ru') ? 'я оплатил' : 'i have paid';
+    if (mb_strtolower($text) === $confirm_text) {
+        sendMessage($chat_id, ($lang === 'ru') 
+            ? "Спасибо! Пожалуйста, отправьте ваши квитанции (в виде текста или фото)." 
+            : "Thank you! Please send your receipts (as text or photo).");
+        $users[$user_id]['step'] = 'upload_receipts';
+        file_put_contents($user_data_file, json_encode($users, JSON_PRETTY_PRINT));
+    } else {
+        sendMessage($chat_id, ($lang === 'ru') 
+            ? "Пожалуйста, подтвердите оплату нажав кнопку." 
+            : "Please confirm payment by clicking the button.");
+    }
+    break;
+
+case 'upload_receipts':
+    if (isset($message['photo'])) {
+        sendMessage(ADMIN_CHAT_ID, "Пользователь @$user_id отправил фото квитанции:");
+        $photo = end($message['photo']); // Последняя — наибольшее качество
+        $file_id = $photo['file_id'];
+        file_get_contents("https://api.telegram.org/bot" . TELEGRAM_TOKEN . "/sendPhoto?chat_id=" . ADMIN_CHAT_ID . "&photo=" . $file_id);
+    } elseif (!empty($text)) {
+        sendMessage(ADMIN_CHAT_ID, "Пользователь @$user_id отправил квитанцию:\n$text");
+    }
+
+    sendMessage($chat_id, ($lang === 'ru') 
+        ? "Спасибо! Квитанции отправлены на проверку. Мы свяжемся с вами после анализа." 
+        : "Thank you! Receipts sent for review. We will get back to you after analysis.");
+
+    unset($users[$user_id]); // Завершение сессии
+    file_put_contents($user_data_file, json_encode($users, JSON_PRETTY_PRINT));
+    break;
+
+default:
+    sendMessage($chat_id, ($lang === 'ru') 
+        ? "Напишите /start чтобы начать заново." 
+        : "Type /start to begin again.");
+    break;
+}
+?>
+
