@@ -319,15 +319,15 @@ switch ($step) {
 
             // Отправляем админу сообщение с кнопками подтверждения
             $approveKeyboard = [
-                'inline_keyboard' => [
-                    [
-                        ['text' => '✅ Підтвердити оплату', 'callback_data' => 'approve_payment:' . $user_id],
-                        ['text' => '❌ Відхилити оплату', 'callback_data' => 'reject_payment:' . $user_id]
-                    ]
-                ]
-            ];
-logMessage("Sending payment confirmation request to admin for user $user_id");
-            sendMessage(ADMIN_CHAT_ID, "Користувач $user_id заявив про оплату $".$payments[$user_id]['amount'], $approveKeyboard);
+    'inline_keyboard' => [
+        [
+            ['text' => '✅ Підтвердити оплату', 'callback_data' => 'approve_payment:' . $user_id],
+            ['text' => '❌ Відхилити оплату', 'callback_data' => 'reject_payment:' . $user_id]
+        ]
+    ]
+];
+
+sendMessage(ADMIN_CHAT_ID, "Користувач $user_id заявив про оплату $".$users[$user_id]['amount_to_pay'], $approveKeyboard);
 
             $users[$user_id]['step'] = 'upload_receipts';
             saveUsers($users);
