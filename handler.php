@@ -176,3 +176,29 @@ if ($session['stage'] === 'ask_country' && !empty($text)) {
     http_response_code(200);
     exit;
 }
+// Обробка отримання квитанції (фото або документ)
+if ($session['stage'] === 'payment_info') {
+    // Перевіряємо, чи надіслано фото або документ
+    if (!empty($input['message']['photo'])) {
+        // Отримаємо file_id останнього фото (найкращої якості)
+        $file_id = end($input['message']['photo'])['file_id'];
+    } elseif (!empty($input['message']['document'])) {
+        $file_id = $input['message']['document']['file_id'];
+    } else {
+        // Якщо ні фото, ні документ - нагадуємо надіслати квитанцію
+        sendMessage($chat_id, getText('payment_info', $session['lang']));
+        http_response_code(200);
+        exit;
+    }
+
+    // Збережемо file_id у сесії (або можна завантажити файл з Telegram, якщо потрібно)
+    $session['receipt_file_id'] = $file_id;
+    $session['stage'] = 'receipt_received';
+    saveSession($chat_id, $session);
+
+    sendMessage($chat_id, getText('thanks', $session['lang']) . "\n\n" .
+        ($session['lang'] === 'uk' ? "Ми перевіримо вашу квитанцію найближчим часом." : "Мы проверим вашу квитанцию в ближайшее время.")
+    );
+    http_response_code(200);
+    exit;
+}
