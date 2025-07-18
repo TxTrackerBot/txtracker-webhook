@@ -197,4 +197,4 @@ switch ($step) {
 
     case 'confirm_payment':
         $answer = mb_strtolower($text);
-        if (($lang === 'ru' && ($answer === 'да')) || ($lang === 'en' && $answer === 'yes')) {
+        if (($lang === 'ru' && ($answer === 'да')) || ($lang === 'en' && $answer === 'yes'))
