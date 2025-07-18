@@ -2,7 +2,7 @@
 date_default_timezone_set('Europe/Vilnius');
 
 define('TELEGRAM_TOKEN', '8124088742:AAEreYU0mGVfzBR0svtcuYaXcMuPjR8EomA');
-define('ADMIN_CHAT_ID', 5565195813); 
+define('ADMIN_CHAT_ID', 5565195813);
 define('USDT_ADDRESS', '0x7d57aD24b58E5926B55cBc03D64a0BB2fFa0Bdb6');
 define('PRICE_PER_RECEIPT', 5); // цена за 1 квитанцию в USD
 
@@ -20,6 +20,8 @@ function savePayments($payments) {
     file_put_contents(PAYMENTS_FILE, json_encode($payments, JSON_PRETTY_PRINT));
 }
 
+$payments = loadPayments();
+
 // Загрузка сохранённых данных пользователей
 $user_data_file = __DIR__ . '/users.json';
 $log_file = __DIR__ . '/log.txt';
@@ -34,7 +36,6 @@ function logMessage($msg) {
     file_put_contents($log_file, date('[Y-m-d H:i:s] ') . $msg . PHP_EOL, FILE_APPEND);
 }
 
-// Отправка сообщения с кнопками
 function sendMessage($chat_id, $text, $buttons = null) {
     $url = "https://api.telegram.org/bot" . TELEGRAM_TOKEN . "/sendMessage";
     $data = [
@@ -55,19 +56,90 @@ function sendMessage($chat_id, $text, $buttons = null) {
     return $result;
 }
 
-// Валидация email
 function is_valid_email($email) {
     return filter_var($email, FILTER_VALIDATE_EMAIL) !== false;
 }
 
-// Валидация телефона в международном формате +1234567890
 function is_valid_phone($phone) {
     return preg_match('/^\+\d{10,15}$/', $phone);
 }
 
-// Чтение входящего запроса
 $input = json_decode(file_get_contents('php://input'), true);
 logMessage("Received update: " . json_encode($input));
+
+$callback = $input['callback_query'] ?? null;
+if ($callback) {
+    $data = $callback['data'];
+    $callback_id = $callback['id'];
+    $from_id = $callback['from']['id'];
+
+    global $payments;
+
+    if ($from_id == ADMIN_CHAT_ID) {
+        if (strpos($data, 'approve_payment:') === 0) {
+            $uid = substr($data, strlen('approve_payment:'));
+            if (isset($payments[$uid])) {
+                $payments[$uid]['status'] = 'approved';
+                savePayments($payments);
+
+                sendMessage($payments[$uid]['chat_id'], "Оплата підтверджена. Починаємо перевірку квитанцій.");
+                sendMessage(ADMIN_CHAT_ID, "Оплата користувача $uid підтверджена.");
+
+                $url = "https://api.telegram.org/bot" . TELEGRAM_TOKEN . "/answerCallbackQuery";
+                $post = [
+                    'callback_query_id' => $callback_id,
+                    'text' => 'Оплата підтверджена',
+                    'show_alert' => false
+                ];
+                $ch = curl_init($url);
+                curl_setopt($ch, CURLOPT_POST, true);
+                curl_setopt($ch, CURLOPT_POSTFIELDS, $post);
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                curl_exec($ch);
+                curl_close($ch);
+                exit;
+            }
+        }
+        if (strpos($data, 'reject_payment:') === 0) {
+            $uid = substr($data, strlen('reject_payment:'));
+            if (isset($payments[$uid])) {
+                $payments[$uid]['status'] = 'rejected';
+                savePayments($payments);
+
+                sendMessage($payments[$uid]['chat_id'], "Оплата не підтверджена. Будь ласка, зв’яжіться з нами.");
+                sendMessage(ADMIN_CHAT_ID, "Оплата користувача $uid відхилена.");
+
+                $url = "https://api.telegram.org/bot" . TELEGRAM_TOKEN . "/answerCallbackQuery";
+                $post = [
+                    'callback_query_id' => $callback_id,
+                    'text' => 'Оплата відхилена',
+                    'show_alert' => false
+                ];
+                $ch = curl_init($url);
+                curl_setopt($ch, CURLOPT_POST, true);
+                curl_setopt($ch, CURLOPT_POSTFIELDS, $post);
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                curl_exec($ch);
+                curl_close($ch);
+                exit;
+            }
+        }
+    } else {
+        $url = "https://api.telegram.org/bot" . TELEGRAM_TOKEN . "/answerCallbackQuery";
+        $post = [
+            'callback_query_id' => $callback_id,
+            'text' => 'У вас немає прав на цю дію.',
+            'show_alert' => true
+        ];
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $post);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_exec($ch);
+        curl_close($ch);
+        exit;
+    }
+}
 
 if (!isset($input['message'])) exit;
 
@@ -77,7 +149,6 @@ $user_id = $message['from']['id'] ?? null;
 $text = trim($message['text'] ?? '');
 $now = time();
 
-// Авто-таймаут 15 минут (удаляем пользователей, которые не завершили авторизацию)
 foreach ($users as $uid => $udata) {
     if (isset($udata['last_activity']) && ($now - $udata['last_activity']) > 900) {
         unset($users[$uid]);
@@ -86,13 +157,11 @@ foreach ($users as $uid => $udata) {
 }
 file_put_contents($user_data_file, json_encode($users, JSON_PRETTY_PRINT));
 
-// Обновляем время последней активности
 if ($user_id) {
     $users[$user_id]['last_activity'] = $now;
     file_put_contents($user_data_file, json_encode($users, JSON_PRETTY_PRINT));
 }
 
-// Инициализация данных пользователя, если нет
 if (!isset($users[$user_id])) {
     $users[$user_id] = [
         'step' => 'start',
@@ -102,7 +171,6 @@ if (!isset($users[$user_id])) {
     file_put_contents($user_data_file, json_encode($users, JSON_PRETTY_PRINT));
 }
 
-// Функция для кнопок выбора языка
 function languageButtons() {
     return [
         'keyboard' => [
@@ -113,7 +181,6 @@ function languageButtons() {
     ];
 }
 
-// Функция кнопок Да/Нет
 function yesNoButtons($lang) {
     if ($lang === 'ru') {
         return [
@@ -134,7 +201,6 @@ function yesNoButtons($lang) {
     }
 }
 
-// Обработка команд
 if ($text === '/start') {
     $users[$user_id]['step'] = 'choose_language';
     file_put_contents($user_data_file, json_encode($users, JSON_PRETTY_PRINT));
@@ -142,7 +208,6 @@ if ($text === '/start') {
     exit;
 }
 
-// Основной обработчик по шагам
 $step = $users[$user_id]['step'];
 $lang = $users[$user_id]['language'] ?? null;
 
@@ -211,63 +276,74 @@ switch ($step) {
 
     case 'confirm_payment':
         $answer = mb_strtolower($text);
-        if (($lang === 'ru' && ($answer === 'да')) || ($lang === 'en' && $answer === 'yes')) {     $users[$user_id]['step'] = 'waiting_for_payment';
-    file_put_contents($user_data_file, json_encode($users, JSON_PRETTY_PRINT));
-    $msg = ($lang === 'ru')
-        ? "Пожалуйста, отправьте $sum USDT на адрес:\n<code>" . USDT_ADDRESS . "</code>\n\nПосле оплаты нажмите кнопку ниже:"
-        : "Please send $sum USDT to the following address:\n<code>" . USDT_ADDRESS . "</code>\n\nAfter payment, click the button below:";
-    sendMessage($chat_id, $msg, [
-        'keyboard' => [
-            [($lang === 'ru') ? 'Я оплатил' : 'I have paid']
-        ],
-        'resize_keyboard' => true,
-        'one_time_keyboard' => true,
-    ]);
-} else {
-    sendMessage($chat_id, ($lang === 'ru') ? "Платёж отменён. Напишите /start чтобы начать заново." : "Payment cancelled. Type /start to begin again.");
-    unset($users[$user_id]);
-    file_put_contents($user_data_file, json_encode($users, JSON_PRETTY_PRINT));
-}
-break;
+        if (($lang === 'ru' && $answer === 'да') || ($lang === 'en' && $answer === 'yes')) {
+            $users[$user_id]['step'] = 'waiting_for_payment';
+            file_put_contents($user_data_file, json_encode($users, JSON_PRETTY_PRINT));
+            $sum = $users[$user_id]['receipt_count'] * PRICE_PER_RECEIPT;
+            $msg = ($lang === 'ru')
+                ? "Пожалуйста, отправьте $sum USDT на адрес:\n<code>" . USDT_ADDRESS . "</code>\n\nПосле оплаты нажмите кнопку ниже:"
+                : "Please send $sum USDT to the following address:\n<code>" . USDT_ADDRESS . "</code>\n\nAfter payment, click the button below:";
+            sendMessage($chat_id, $msg, [
+                'keyboard' => [
+                    [($lang === 'ru') ? 'Я оплатил' : 'I have paid']
+                ],
+                'resize_keyboard' => true,
+                'one_time_keyboard' => true,
+            ]);
 
-case 'waiting_for_payment':
-    $confirm_text = ($lang === 'ru') ? 'я оплатил' : 'i have paid';
-    if (mb_strtolower($text) === $confirm_text) {
-        sendMessage($chat_id, ($lang === 'ru') 
-            ? "Спасибо! Пожалуйста, отправьте ваши квитанции (в виде текста или фото)." 
-            : "Thank you! Please send your receipts (as text or photo).");
-        $users[$user_id]['step'] = 'upload_receipts';
+            // Сохраняем платеж как ожидающий
+            global $payments;
+            $payments[$user_id] = [
+                'chat_id' => $chat_id,
+                'amount' => $sum,
+                'status' => 'pending',
+                'timestamp' => time(),
+            ];
+            savePayments($payments);
+        } else {
+            sendMessage($chat_id, ($lang === 'ru') ? "Платёж отменён. Напишите /start чтобы начать заново." : "Payment cancelled. Type /start to begin again.");
+            unset($users[$user_id]);
+            file_put_contents($user_data_file, json_encode($users, JSON_PRETTY_PRINT));
+        }
+        break;
+
+    case 'waiting_for_payment':
+        $confirm_text = ($lang === 'ru') ? 'я оплатил' : 'i have paid';
+        if (mb_strtolower($text) === $confirm_text) {
+            sendMessage($chat_id, ($lang === 'ru')
+                ? "Спасибо! Пожалуйста, отправьте ваши квитанции (в виде текста или фото)."
+                : "Thank you! Please send your receipts (as text or photo).");
+            $users[$user_id]['step'] = 'upload_receipts';
+            file_put_contents($user_data_file, json_encode($users, JSON_PRETTY_PRINT));
+        } else {
+            sendMessage($chat_id, ($lang === 'ru')
+                ? "Пожалуйста, подтвердите оплату нажав кнопку."
+                : "Please confirm payment by clicking the button.");
+        }
+        break;
+
+    case 'upload_receipts':
+        if (isset($message['photo'])) {
+            sendMessage(ADMIN_CHAT_ID, "Пользователь @$user_id отправил фото квитанции:");
+            $photo = end($message['photo']);
+            $file_id = $photo['file_id'];
+            file_get_contents("https://api.telegram.org/bot" . TELEGRAM_TOKEN . "/sendPhoto?chat_id=" . ADMIN_CHAT_ID . "&photo=" . $file_id);
+        } elseif (!empty($text)) {
+            sendMessage(ADMIN_CHAT_ID, "Пользователь @$user_id отправил квитанцию:\n$text");
+        }
+
+        sendMessage($chat_id, ($lang === 'ru')
+            ? "Спасибо! Квитанции отправлены на проверку. Мы свяжемся с вами после анализа."
+            : "Thank you! Receipts sent for review. We will get back to you after analysis.");
+
+        unset($users[$user_id]);
         file_put_contents($user_data_file, json_encode($users, JSON_PRETTY_PRINT));
-    } else {
-        sendMessage($chat_id, ($lang === 'ru') 
-            ? "Пожалуйста, подтвердите оплату нажав кнопку." 
-            : "Please confirm payment by clicking the button.");
-    }
-    break;
+        break;
 
-case 'upload_receipts':
-    if (isset($message['photo'])) {
-        sendMessage(ADMIN_CHAT_ID, "Пользователь @$user_id отправил фото квитанции:");
-        $photo = end($message['photo']); // Последняя — наибольшее качество
-        $file_id = $photo['file_id'];
-        file_get_contents("https://api.telegram.org/bot" . TELEGRAM_TOKEN . "/sendPhoto?chat_id=" . ADMIN_CHAT_ID . "&photo=" . $file_id);
-    } elseif (!empty($text)) {
-        sendMessage(ADMIN_CHAT_ID, "Пользователь @$user_id отправил квитанцию:\n$text");
-    }
-
-    sendMessage($chat_id, ($lang === 'ru') 
-        ? "Спасибо! Квитанции отправлены на проверку. Мы свяжемся с вами после анализа." 
-        : "Thank you! Receipts sent for review. We will get back to you after analysis.");
-
-    unset($users[$user_id]); // Завершение сессии
-    file_put_contents($user_data_file, json_encode($users, JSON_PRETTY_PRINT));
-    break;
-
-default:
-    sendMessage($chat_id, ($lang === 'ru') 
-        ? "Напишите /start чтобы начать заново." 
-        : "Type /start to begin again.");
-    break;
+    default:
+        sendMessage($chat_id, ($lang === 'ru')
+            ? "Напишите /start чтобы начать заново."
+            : "Type /start to begin again.");
+        break;
 }
 ?>
-
