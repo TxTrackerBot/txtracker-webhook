@@ -85,6 +85,94 @@ if ($session['stage'] === 'start') {
     exit;
 }
 
-// Продовження збирати дані - наступні частини коду я пришлю далі...
+// Функція для відправки повідомлення з урахуванням мови
+function getText($key, $lang) {
+    $texts = [
+        'uk' => [
+            'ask_name' => "Введіть, будь ласка, ваше ПІБ:",
+            'ask_phone' => "Введіть номер телефону:",
+            'ask_email' => "Введіть ваш Email:",
+            'ask_country' => "Вкажіть країну проживання:",
+            'payment_info' => "Перевірка однієї квитанції коштує 5 доларів.\n" .
+                              "Оплата доступна криптовалютою за реквізитами:\n" .
+                              "BTC: bc1qexampleaddress...\n" .
+                              "ETH: 0xExampleAddress...\n\n" .
+                              "Після оплати надішліть, будь ласка, квитанцію для перевірки.",
+            'thanks' => "Дякуємо! Очікуйте на перевірку.",
+            'invalid_email' => "Невірний формат Email. Спробуйте ще раз.",
+            'invalid_phone' => "Невірний формат телефону. Введіть номер у форматі +380XXXXXXXXX або подібному."
+        ],
+        'ru' => [
+            'ask_name' => "Введите, пожалуйста, ваше ФИО:",
+            'ask_phone' => "Введите номер телефона:",
+            'ask_email' => "Введите ваш Email:",
+            'ask_country' => "Укажите страну проживания:",
+            'payment_info' => "Проверка одной квитанции стоит 5 долларов.\n" .
+                              "Оплата доступна криптовалютой по реквизитам:\n" .
+                              "BTC: bc1qexampleaddress...\n" .
+                              "ETH: 0xExampleAddress...\n\n" .
+                              "После оплаты отправьте, пожалуйста, квитанцию для проверки.",
+            'thanks' => "Спасибо! Ожидайте проверку.",
+            'invalid_email' => "Неверный формат Email. Попробуйте еще раз.",
+            'invalid_phone' => "Неверный формат телефона. Введите номер в формате +7XXXXXXXXXX или подобном."
+        ],
+    ];
+    return $texts[$lang][$key] ?? '';
+}
 
-http_response_code(200);
+// Валідація Email (проста)
+function isValidEmail($email) {
+    return filter_var($email, FILTER_VALIDATE_EMAIL) !== false;
+}
+
+// Валідація телефону (проста, можна допрацювати)
+function isValidPhone($phone) {
+    return preg_match('/^\+?[0-9\s\-\(\)]{7,}$/', $phone);
+}
+
+// Обробка текстових повідомлень по стадіям збору даних
+if ($session['stage'] === 'ask_name' && !empty($text)) {
+    $session['name'] = $text;
+    $session['stage'] = 'ask_phone';
+    saveSession($chat_id, $session);
+    sendMessage($chat_id, getText('ask_phone', $session['lang']));
+    http_response_code(200);
+    exit;
+}
+
+if ($session['stage'] === 'ask_phone' && !empty($text)) {
+    if (!isValidPhone($text)) {
+        sendMessage($chat_id, getText('invalid_phone', $session['lang']));
+        http_response_code(200);
+        exit;
+    }
+    $session['phone'] = $text;
+    $session['stage'] = 'ask_email';
+    saveSession($chat_id, $session);
+    sendMessage($chat_id, getText('ask_email', $session['lang']));
+    http_response_code(200);
+    exit;
+}
+
+if ($session['stage'] === 'ask_email' && !empty($text)) {
+    if (!isValidEmail($text)) {
+        sendMessage($chat_id, getText('invalid_email', $session['lang']));
+        http_response_code(200);
+        exit;
+    }
+    $session['email'] = $text;
+    $session['stage'] = 'ask_country';
+    saveSession($chat_id, $session);
+    sendMessage($chat_id, getText('ask_country', $session['lang']));
+    http_response_code(200);
+    exit;
+}
+
+if ($session['stage'] === 'ask_country' && !empty($text)) {
+    $session['country'] = $text;
+    $session['stage'] = 'payment_info';
+    saveSession($chat_id, $session);
+    sendMessage($chat_id, getText('payment_info', $session['lang']));
+    http_response_code(200);
+    exit;
+}
