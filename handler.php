@@ -6,6 +6,20 @@ define('ADMIN_CHAT_ID', 5565195813);
 define('USDT_ADDRESS', '0x7d57aD24b58E5926B55cBc03D64a0BB2fFa0Bdb6');
 define('PRICE_PER_RECEIPT', 5); // цена за 1 квитанцию в USD
 
+define('PAYMENTS_FILE', __DIR__ . '/storage/payments.json');
+
+function loadPayments() {
+    if (!file_exists(PAYMENTS_FILE)) {
+        file_put_contents(PAYMENTS_FILE, json_encode([]));
+    }
+    $data = file_get_contents(PAYMENTS_FILE);
+    return json_decode($data, true) ?: [];
+}
+
+function savePayments($payments) {
+    file_put_contents(PAYMENTS_FILE, json_encode($payments, JSON_PRETTY_PRINT));
+}
+
 // Загрузка сохранённых данных пользователей
 $user_data_file = __DIR__ . '/users.json';
 $log_file = __DIR__ . '/log.txt';
