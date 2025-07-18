@@ -6,7 +6,7 @@ function logMessage($message) {
 
 $token = getenv('TELEGRAM_TOKEN');
 $input = json_decode(file_get_contents('php://input'), true);
-
+logMessage("Received update: " . json_encode($input));
 $chat_id = $input['message']['chat']['id'] ?? null;
 $text = trim($input['message']['text'] ?? '');
 $callback_data = $input['callback_query']['data'] ?? null;
