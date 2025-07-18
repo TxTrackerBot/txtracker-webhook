@@ -28,7 +28,6 @@ if ($chat_id) {
     curl_setopt($ch, CURLOPT_POSTFIELDS, $post_fields); 
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true); 
     $result = curl_exec($ch);
+    logMessage("Telegram API response: " . $result);
     curl_close($ch);
-
-    logMessage("Sent response: " . $response_text);
 }
