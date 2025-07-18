@@ -1,0 +1,77 @@
+{
+    "update_id": 751217137,
+    "message": {
+        "message_id": 24,
+        "from": {
+            "id": 432275695,
+            "is_bot": false,
+            "first_name": "\u0421\u0430\u0431\u0438\u043d\u0430",
+            "username": "Sabibinka",
+            "language_code": "ru"
+        },
+        "chat": {
+            "id": 432275695,
+            "first_name": "\u0421\u0430\u0431\u0438\u043d\u0430",
+            "username": "Sabibinka",
+            "type": "private"
+        },
+        "date": 1752768709,
+        "text": "\u043f\u0440"
+    }
+}
+{
+    "update_id": 751217138,
+    "message": {
+        "message_id": 27,
+        "from": {
+            "id": 432275695,
+            "is_bot": false,
+            "first_name": "\u0421\u0430\u0431\u0438\u043d\u0430",
+            "username": "Sabibinka",
+            "language_code": "ru"
+        },
+        "chat": {
+            "id": 432275695,
+            "first_name": "\u0421\u0430\u0431\u0438\u043d\u0430",
+            "username": "Sabibinka",
+            "type": "private"
+        },
+        "date": 1752768741,
+        "text": "\/start",
+        "entities": [
+            {
+                "offset": 0,
+                "length": 6,
+                "type": "bot_command"
+            }
+        ]
+    }
+}
+{
+    "update_id": 751217139,
+    "message": {
+        "message_id": 30,
+        "from": {
+            "id": 432275695,
+            "is_bot": false,
+            "first_name": "\u0421\u0430\u0431\u0438\u043d\u0430",
+            "username": "Sabibinka",
+            "language_code": "ru"
+        },
+        "chat": {
+            "id": 432275695,
+            "first_name": "\u0421\u0430\u0431\u0438\u043d\u0430",
+            "username": "Sabibinka",
+            "type": "private"
+        },
+        "date": 1752768889,
+        "text": "\/start",
+        "entities": [
+            {
+                "offset": 0,
+                "length": 6,
+                "type": "bot_command"
+            }
+        ]
+    }
+}
