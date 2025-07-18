@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: txtracker-webhook
+    env: docker
+    repo: https://github.com/TxTrackerBot/txtracker-webhook
+    branch: main
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: frankfurt
+    buildFilter:
+      paths:
+        - Dockerfile
+        - handler.php
+        - bot.php
+        - config.php
