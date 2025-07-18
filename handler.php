@@ -19,7 +19,7 @@ $first_name = $message['from']['first_name'] ?? '';
 $user_data_file = 'users.json';
 $users = file_exists($user_data_file) ? json_decode(file_get_contents($user_data_file), true) : [];
 
-// Функція відправки повідомлень з кнопками
+// Відправка повідомлення з кнопками
 function sendMessage($chat_id, $text, $keyboard = null) {
     $url = "https://api.telegram.org/bot" . TELEGRAM_TOKEN . "/sendMessage";
     $post_fields = [
@@ -30,6 +30,7 @@ function sendMessage($chat_id, $text, $keyboard = null) {
     if ($keyboard !== null) {
         $post_fields['reply_markup'] = json_encode($keyboard);
     }
+
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_POST, true);
@@ -37,6 +38,7 @@ function sendMessage($chat_id, $text, $keyboard = null) {
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     $result = curl_exec($ch);
     curl_close($ch);
+
     logMessage("Sent to $chat_id: $text");
 }
 
@@ -45,8 +47,8 @@ if ($text === '/start') {
         'keyboard' => [
             [['text' => 'RU'], ['text' => 'EN']]
         ],
-        'one_time_keyboard' => true,
-        'resize_keyboard' => true
+        'resize_keyboard' => true,
+        'one_time_keyboard' => true
     ];
     $msg = "Выберите язык / Choose language:";
     sendMessage($chat_id, $msg, $keyboard);
@@ -55,40 +57,55 @@ if ($text === '/start') {
 
 if (in_array(strtoupper($text), ['RU', 'EN'])) {
     $users[$user_id]['language'] = strtolower($text);
-    $users[$user_id]['step'] = 'waiting_name';
+    $users[$user_id]['step'] = 'waiting_full_name';
     file_put_contents($user_data_file, json_encode($users, JSON_PRETTY_PRINT));
-    $reply = ($users[$user_id]['language'] == 'ru') 
+    
+    $reply = ($users[$user_id]['language'] == 'ru')
         ? "Вы выбрали русский язык. Пожалуйста, введите ваше имя и фамилию."
         : "You chose English. Please enter your full name.";
     sendMessage($chat_id, $reply);
     exit;
 }
 
-$user_lang = $users[$user_id]['language'] ?? 'en'; // дефолт — англ
+$user_lang = $users[$user_id]['language'] ?? 'en';
 $step = $users[$user_id]['step'] ?? null;
 
 switch ($step) {
-    case 'waiting_name':
+    case 'waiting_full_name':
         $users[$user_id]['full_name'] = $text;
         $users[$user_id]['step'] = 'waiting_phone';
         file_put_contents($user_data_file, json_encode($users, JSON_PRETTY_PRINT));
         $reply = ($user_lang == 'ru') 
-            ? "Спасибо, {$text}! Введите ваш номер телефона Telegram."
-            : "Thanks, {$text}! Please enter your Telegram phone number.";
+            ? "Спасибо, {$text}! Введите номер телефона в международном формате (например, +380XXXXXXXXX)."
+            : "Thanks, {$text}! Please enter your phone number in international format (e.g. +380XXXXXXXXX).";
         sendMessage($chat_id, $reply);
         break;
 
     case 'waiting_phone':
+        if (!preg_match('/^\+\d{7,15}$/', $text)) {
+            $reply = ($user_lang == 'ru') 
+                ? "Пожалуйста, введите корректный номер телефона, начиная с '+'."
+                : "Please enter a valid phone number starting with '+'.";
+            sendMessage($chat_id, $reply);
+            break;
+        }
         $users[$user_id]['phone'] = $text;
         $users[$user_id]['step'] = 'waiting_email';
         file_put_contents($user_data_file, json_encode($users, JSON_PRETTY_PRINT));
         $reply = ($user_lang == 'ru') 
-            ? "Номер получен! Введите ваш Email."
-            : "Phone received! Please enter your email.";
+            ? "Номер принят! Введите ваш Email."
+            : "Phone number accepted! Please enter your email.";
         sendMessage($chat_id, $reply);
         break;
 
     case 'waiting_email':
+        if (!filter_var($text, FILTER_VALIDATE_EMAIL)) {
+            $reply = ($user_lang == 'ru') 
+                ? "Пожалуйста, введите корректный Email."
+                : "Please enter a valid email address.";
+            sendMessage($chat_id, $reply);
+            break;
+        }
         $users[$user_id]['email'] = $text;
         $users[$user_id]['step'] = 'waiting_country';
         file_put_contents($user_data_file, json_encode($users, JSON_PRETTY_PRINT));
@@ -100,100 +117,18 @@ switch ($step) {
 
     case 'waiting_country':
         $users[$user_id]['country'] = $text;
-        $users[$user_id]['step'] = 'waiting_payment_check_confirm';
+        $users[$user_id]['step'] = 'waiting_receipts_count';
         file_put_contents($user_data_file, json_encode($users, JSON_PRETTY_PRINT));
-        $keyboard = [
-            'keyboard' => [
-                [['text' => ($user_lang == 'ru' ? 'Да' : 'Yes')], ['text' => ($user_lang == 'ru' ? 'Нет' : 'No')]]
-            ],
-            'one_time_keyboard' => true,
-            'resize_keyboard' => true
-        ];
         $reply = ($user_lang == 'ru')
-            ? "Проверка одной квитанции стоит 5 долларов. Хотите продолжить? Ответьте Да или Нет."
-            : "Checking one receipt costs $5. Do you want to continue? Reply Yes or No.";
-        sendMessage($chat_id, $reply, $keyboard);
-        break;
-
-    case 'waiting_payment_check_confirm':
-        $keyboard = [
-            'keyboard' => [
-                [['text' => ($user_lang == 'ru' ? 'Да' : 'Yes')], ['text' => ($user_lang == 'ru' ? 'Нет' : 'No')]]
-            ],
-            'one_time_keyboard' => true,
-            'resize_keyboard' => true
-        ];
-
-        $answer = mb_strtolower($text);
-        if (($user_lang == 'ru' && ($answer == 'да' || $answer == 'yes')) || ($user_lang == 'en' && $answer == 'yes')) {
-            $users[$user_id]['step'] = 'waiting_payment_usdt';
-            file_put_contents($user_data_file, json_encode($users, JSON_PRETTY_PRINT));
-            $reply = ($user_lang == 'ru')
-                ? "Оплатите 5 USDT по реквизитам:\n0x7d57aD24b58E5926B55cBc03D64a0BB2fFa0Bdb6\nПосле оплаты напишите 'Оплата выполнена'."
-                : "Please pay 5 USDT to the address:\n0x7d57aD24b58E5926B55cBc03D64a0BB2fFa0Bdb6\nAfter payment, write 'Payment done'.";
-            sendMessage($chat_id, $reply);
-        } elseif (($user_lang == 'ru' && ($answer == 'нет' || $answer == 'no')) || ($user_lang == 'en' && $answer == 'no')) {
-            $users[$user_id]['step'] = 'cancelled';
-            file_put_contents($user_data_file, json_encode($users, JSON_PRETTY_PRINT));
-            $reply = ($user_lang == 'ru') ? "Операция отменена." : "Operation cancelled.";
-            sendMessage($chat_id, $reply);
-        } else {
-            sendMessage($chat_id, ($user_lang == 'ru' ? "Пожалуйста, выберите Да или Нет." : "Please choose Yes or No."), $keyboard);
-        }
-        break;
-
-    case 'waiting_payment_usdt':
-        if (mb_strtolower($text) == 'оплата выполнена' || mb_strtolower($text) == 'payment done') {
-            $users[$user_id]['step'] = 'waiting_receipt';
-            file_put_contents($user_data_file, json_encode($users, JSON_PRETTY_PRINT));
-            $reply = ($user_lang == 'ru')
-                ? "Оплата получена. Теперь отправьте фото квитанции. На квитанции обязательно должно быть: номер квитанции, дата совершения перевода."
-                : "Payment received. Now please send a photo of the receipt. The receipt must contain: receipt number and date of transfer.";
-            sendMessage($chat_id, $reply);
-        } else {
-            $reply = ($user_lang == 'ru')
-                ? "Пожалуйста, подтвердите оплату, написав 'Оплата выполнена'."
-                : "Please confirm payment by writing 'Payment done'.";
-            sendMessage($chat_id, $reply);
-        }
-        break;
-
-    case 'waiting_receipt':
-        if (isset($message['photo'])) {
-            $photo_array = $message['photo'];
-            $file_id = end($photo_array)['file_id'];
-            $users[$user_id]['receipt_file_id'] = $file_id;
-            $users[$user_id]['step'] = 'completed';
-            file_put_contents($user_data_file, json_encode($users, JSON_PRETTY_PRINT));
-            $reply = ($user_lang == 'ru')
-                ? "Квитанция получена. Ожидайте проверку в течение 30 минут."
-                : "Receipt received. Please wait for verification within 30 minutes.";
-            sendMessage($chat_id, $reply);
-        } else {
-            $reply = ($user_lang == 'ru')
-                ? "Пожалуйста, отправьте фото квитанции."
-                : "Please send a photo of the receipt.";
-            sendMessage($chat_id, $reply);
-        }
-        break;
-
-    case 'completed':
-        $reply = ($user_lang == 'ru')
-            ? "Вы уже завершили регистрацию. Спасибо!"
-            : "You have already completed registration. Thank you!";
+            ? "Стоимость отслеживания одной транзакции с подробным анализом 5$. Сколько квитанций хотите проверить?"
+            : "The cost of tracking one transaction with detailed analysis is $5. How many receipts do you want to check?";
         sendMessage($chat_id, $reply);
         break;
 
-    case 'cancelled':
-        $reply = ($user_lang == 'ru')
-            ? "Вы отменили операцию. Если хотите начать заново, отправьте /start."
-            : "You cancelled the operation. If you want to start again, send /start.";
-        sendMessage($chat_id, $reply);
-        break;
-
+    // Кроки подальші робитимемо в наступних етапах
     default:
         sendMessage($chat_id, ($user_lang == 'ru') 
-            ? "Пожалуйста, отправьте /start, чтобы начать."
+            ? "Пожалуйста, отправьте /start для начала."
             : "Please send /start to begin.");
         break;
 }
