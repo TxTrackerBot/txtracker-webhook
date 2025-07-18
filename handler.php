@@ -105,7 +105,6 @@ $users = loadUsers();
 
 $input = json_decode(file_get_contents('php://input'), true);
 logMessage("Received update: " . json_encode($input));
-
 $callback = $input['callback_query'] ?? null;
 
 // --- Обработка callback ---
@@ -117,6 +116,7 @@ if ($callback) {
     if ($from_id == ADMIN_CHAT_ID) {
         if (strpos($data, 'approve_payment:') === 0) {
             $uid = substr($data, strlen('approve_payment:'));
+            global $payments;
             if (isset($payments[$uid])) {
                 $payments[$uid]['status'] = 'approved';
                 savePayments($payments);
@@ -124,23 +124,14 @@ if ($callback) {
                 sendMessage($payments[$uid]['chat_id'], "Оплата підтверджена. Починаємо перевірку квитанцій.");
                 sendMessage(ADMIN_CHAT_ID, "Оплата користувача $uid підтверджена.");
 
-                $url = "https://api.telegram.org/bot" . TELEGRAM_TOKEN . "/answerCallbackQuery";
-                $post = [
-                    'callback_query_id' => $callback_id,
-                    'text' => 'Оплата підтверджена',
-                    'show_alert' => false,
-                ];
-                $ch = curl_init($url);
-                curl_setopt($ch, CURLOPT_POST, true);
-                curl_setopt($ch, CURLOPT_POSTFIELDS, $post);
-                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-                curl_exec($ch);
-                curl_close($ch);
-                exit;
+                // Відповідь на callback
+                answerCallback($callback_id, 'Оплата підтверджена');
             }
+            exit;
         }
         if (strpos($data, 'reject_payment:') === 0) {
             $uid = substr($data, strlen('reject_payment:'));
+            global $payments;
             if (isset($payments[$uid])) {
                 $payments[$uid]['status'] = 'rejected';
                 savePayments($payments);
@@ -148,37 +139,31 @@ if ($callback) {
                 sendMessage($payments[$uid]['chat_id'], "Оплата не підтверджена. Будь ласка, зв’яжіться з нами.");
                 sendMessage(ADMIN_CHAT_ID, "Оплата користувача $uid відхилена.");
 
-                $url = "https://api.telegram.org/bot" . TELEGRAM_TOKEN . "/answerCallbackQuery";
-                $post = [
-                    'callback_query_id' => $callback_id,
-                    'text' => 'Оплата відхилена',
-                    'show_alert' => false,
-                ];
-                $ch = curl_init($url);
-                curl_setopt($ch, CURLOPT_POST, true);
-                curl_setopt($ch, CURLOPT_POSTFIELDS, $post);
-                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-                curl_exec($ch);
-                curl_close($ch);
-                exit;
+                answerCallback($callback_id, 'Оплата відхилена');
             }
+            exit;
         }
     } else {
-        $url = "https://api.telegram.org/bot" . TELEGRAM_TOKEN . "/answerCallbackQuery";
-        $post = [
-            'callback_query_id' => $callback_id,
-            'text' => 'У вас немає прав на цю дію.',
-            'show_alert' => true,
-        ];
-        $ch = curl_init($url);
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $post);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_exec($ch);
-        curl_close($ch);
+        answerCallback($callback_id, 'У вас немає прав на цю дію.', true);
         exit;
     }
 }
+
+function answerCallback($callback_id, $text, $show_alert = false) {
+    $url = "https://api.telegram.org/bot" . TELEGRAM_TOKEN . "/answerCallbackQuery";
+    $post = [
+        'callback_query_id' => $callback_id,
+        'text' => $text,
+        'show_alert' => $show_alert,
+    ];
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $post);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_exec($ch);
+    curl_close($ch);
+}
+
 
 if (!isset($input['message'])) {
     exit;
