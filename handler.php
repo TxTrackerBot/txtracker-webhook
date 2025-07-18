@@ -344,6 +344,7 @@ switch ($step) {
                     ]
                 ]
             ];
+logMessage("Sending payment confirmation request to admin for user $user_id");
             sendMessage(ADMIN_CHAT_ID, "Користувач $user_id заявив про оплату $".$payments[$user_id]['amount'], $approveKeyboard);
 
             $users[$user_id]['step'] = 'upload_receipts';
