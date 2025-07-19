@@ -71,7 +71,7 @@ function sendContactRequest($chat_id) {
     $keyboard = [
         'keyboard' => [
             [
-                ['text' => '📱 Поділитися контактом', 'request_contact' => true]
+                ['text' => '📱 Поделиться контактом', 'request_contact' => true]
             ]
         ],
         'resize_keyboard' => true,
@@ -80,7 +80,7 @@ function sendContactRequest($chat_id) {
 
     $data = [
         'chat_id' => $chat_id,
-        'text' => "Будь ласка, поділися своїм номером телефону:",
+        'text' => "Пожалуйста, поделитесь своим номером телефона:",
         'reply_markup' => json_encode($keyboard)
     ];
 
@@ -135,11 +135,11 @@ if ($callback) {
                 $payments[$uid]['status'] = 'approved';
                 savePayments($payments);
 
-                sendMessage($payments[$uid]['chat_id'], "Оплата підтверджена. Починаємо перевірку квитанцій.");
-                sendMessage(ADMIN_CHAT_ID, "Оплата користувача $uid підтверджена.");
+                sendMessage($payments[$uid]['chat_id'], "Оплата подтверждена. Начинаем проверку квитанций.");
+                sendMessage(ADMIN_CHAT_ID, "Оплата пользователя $uid подтверждена.");
 
                 // Відповідь на callback
-                answerCallback($callback_id, 'Оплата підтверджена');
+                answerCallback($callback_id, 'Оплата подтверждена');
             }
             exit;
         }
@@ -150,15 +150,15 @@ if ($callback) {
                 $payments[$uid]['status'] = 'rejected';
                 savePayments($payments);
 
-                sendMessage($payments[$uid]['chat_id'], "Оплата не підтверджена. Будь ласка, зв’яжіться з нами.");
-                sendMessage(ADMIN_CHAT_ID, "Оплата користувача $uid відхилена.");
+                sendMessage($payments[$uid]['chat_id'], "Оплата не подтверждена. Пожалуйста, свяжитесь с нами.");
+                sendMessage(ADMIN_CHAT_ID, "Оплата пользователя $uid отклонена.");
 
-                answerCallback($callback_id, 'Оплата відхилена');
+                answerCallback($callback_id, 'Оплата отклонена');
             }
             exit;
         }
     } else {
-        answerCallback($callback_id, 'У вас немає прав на цю дію.', true);
+        answerCallback($callback_id, 'У вас нет прав на это действие.', true);
         exit;
     }
 }
@@ -250,16 +250,21 @@ switch ($step) {
     break;
 
 case 'wait_phone':
-    if (isset($update['message']['contact']) && $update['message']['contact']['user_id'] == $user_id) {
-        $users[$user_id]['phone'] = $update['message']['contact']['phone_number'];
+    if (isset($update['message']['contact'])) {
+        $contact = $update['message']['contact'];
+        $phone = $contact['phone_number'];
+
+        $users[$user_id]['phone'] = $phone;
         $users[$user_id]['step'] = 'enter_email';
         saveUsers($users);
-        sendMessage($chat_id, $lang === 'ru' ? "Контакт отримано. Тепер введіть вашу електронну пошту." : "Contact received. Now enter your email address.");
+
+        sendMessage($chat_id, $lang === 'ru' ? "Контакт получен. Тепер введите вашу електронну почту." : "Contact received. Now enter your email address.");
     } else {
         sendMessage($chat_id, $lang === 'ru' ? "Пожалуйста, нажмите кнопку ниже и поделитесь своим контактом." : "Please press the button below and share your contact.");
         sendContactRequest($chat_id);
     }
     break;
+
 
         $users[$user_id]['phone'] = $text;
         $users[$user_id]['step'] = 'enter_email';
@@ -331,8 +336,17 @@ case 'wait_phone':
         $confirm_text = $lang === 'ru' ? 'я оплатил' : 'i have paid';
         if (mb_strtolower($text) === $confirm_text) {
             sendMessage($chat_id, $lang === 'ru'
-                ? "Спасибо! Пожалуйста, отправьте ваши квитанции (в виде текста или фото)."
-                : "Thank you! Please send your receipts (as text or photo).");
+                ? "Спасибо! Пожалуйста, прикрепите фото или скриншот перевода, на котором видны:  
+- Хеш транзакции (TXID)  
+- Сумма перевода  
+- Дата совершения операции  
+Это необходимо для подтверждения оплаты."
+                : "Thank you!
+Please attach a photo or screenshot of the transaction that clearly shows:
+- Transaction hash (TXID)
+- Amount sent
+- Date of the transaction
+This is required to confirm your payment.");
 
             // Обновляем платеж, если нужно
             $payments[$user_id] = [
@@ -345,28 +359,38 @@ case 'wait_phone':
 
             // Отправляем админу сообщение с кнопками подтверждения
             $approveKeyboard = [
-    'inline_keyboard' => [
-        [
-            ['text' => '✅ Підтвердити оплату', 'callback_data' => 'approve_payment:' . $user_id],
-            ['text' => '❌ Відхилити оплату', 'callback_data' => 'reject_payment:' . $user_id]
-        ]
-    ]
-];
+            'inline_keyboard' => [
+                [
+                    ['text' => '✅ Подтвердить оплату', 'callback_data' => 'approve_payment:' . $user_id],
+                    ['text' => '❌ Отклонить оплату', 'callback_data' => 'reject_payment:' . $user_id]
+                ]
+            ]
+        ];
 
-sendMessage(ADMIN_CHAT_ID, "Користувач $user_id заявив про оплату $".$users[$user_id]['amount_to_pay'], $approveKeyboard);
+        sendPhoto($adminId, $file_id, "Новая оплата от пользователя <b>$user_id</b>.", $approveKeyboard);
+        sendMessage($chat_id, "📤 Ваш чек отправлена на проверку. Ожидайте подтверждение.");
+    }
+}
 
-            $users[$user_id]['step'] = 'upload_receipts';
-            saveUsers($users);
-        } else {
-            sendMessage($chat_id, $lang === 'ru'
-                ? "Пожалуйста, подтвердите оплату нажав кнопку."
-                : "Please confirm payment by clicking the button.");
-        }
+if (isset($data['callback_query'])) {
+    $callback = $data['callback_query'];
+    $data_parts = explode(':', $callback['data']);
+    $action = $data_parts[0];
+    $user_id = $data_parts[1];
+
+    if ($action === 'approve_payment') {
+        sendMessage($user_id, "✅ Оплату подтверждено! 💸\nUSDT для следующей оплаты: <code>$usdtWallet</code>");
+        sendMessage($adminId, "✅ Оплата пользователя <b>$user_id</b> подтверждена.");
+    } elseif ($action === 'reject_payment') {
+        sendMessage($user_id, "❌ Оплата отклонена. Ожидаем чек о переводе средств ");
+        sendMessage($adminId, "❌ Оплата пользователя <b>$user_id</b> отклонена.");
+    }
+
         break;
 
     case 'upload_receipts':
         if (isset($message['photo'])) {
-            sendMessage(ADMIN_CHAT_ID, "Пользователь $user_id отправил фото квитанції:");
+            sendMessage(ADMIN_CHAT_ID, "Пользователь $user_id отправил фото квитанции для проверки транзакций.");
             $photo = end($message['photo']);
             $file_id = $photo['file_id'];
 
@@ -374,7 +398,7 @@ sendMessage(ADMIN_CHAT_ID, "Користувач $user_id заявив про о
             $postData = [
                 'chat_id' => ADMIN_CHAT_ID,
                 'photo' => $file_id,
-                'caption' => "Фото квитанції від користувача $user_id"
+                'caption' => "Фото квитанции от пользователя для проверки транзакций $user_id"
             ];
             $ch = curl_init($sendPhotoUrl);
             curl_setopt($ch, CURLOPT_POST, true);
@@ -383,7 +407,7 @@ sendMessage(ADMIN_CHAT_ID, "Користувач $user_id заявив про о
             curl_exec($ch);
             curl_close($ch);
         } elseif (!empty($text)) {
-            sendMessage(ADMIN_CHAT_ID, "Пользователь $user_id отправил квитанцію:\n" . $text);
+            sendMessage(ADMIN_CHAT_ID, "Пользователь $user_id отправил квитанции для проверки транзакций:\n" . $text);
         }
 
         sendMessage($chat_id, $lang === 'ru'
