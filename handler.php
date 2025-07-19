@@ -67,9 +67,26 @@ function is_valid_email($email) {
     return filter_var($email, FILTER_VALIDATE_EMAIL) !== false;
 }
 
-function is_valid_phone($phone) {
-    return preg_match('/^\+\d{10,15}$/', $phone);
+function sendContactRequest($chat_id) {
+    $keyboard = [
+        'keyboard' => [
+            [
+                ['text' => '📱 Поділитися контактом', 'request_contact' => true]
+            ]
+        ],
+        'resize_keyboard' => true,
+        'one_time_keyboard' => true
+    ];
+
+    $data = [
+        'chat_id' => $chat_id,
+        'text' => "Будь ласка, поділися своїм номером телефону:",
+        'reply_markup' => json_encode($keyboard)
+    ];
+
+    file_get_contents("https://api.telegram.org/bot8124088742:AAEreYU0mGVfzBR0svtcuYaXcMuPjR8EomA/sendMessage?" . http_build_query($data));
 }
+
 
 // --- Кнопки ---
 function languageButtons() {
@@ -220,21 +237,30 @@ switch ($step) {
         break;
 
     case 'enter_name':
-        if (mb_strlen($text) < 3) {
-            sendMessage($chat_id, $lang === 'ru' ? "Пожалуйста, введите корректное имя и фамилию." : "Please enter a valid full name.");
-            break;
-        }
-        $users[$user_id]['name'] = $text;
-        $users[$user_id]['step'] = 'enter_phone';
-        saveUsers($users);
-        sendMessage($chat_id, $lang === 'ru' ? "Введите номер телефона в международном формате (начинается с +)." : "Enter your phone number in international format (starts with +).");
+    if (mb_strlen($text) < 3) {
+        sendMessage($chat_id, $lang === 'ru' ? "Пожалуйста, введите корректное имя и фамилию." : "Please enter a valid full name.");
         break;
+    }
 
-    case 'enter_phone':
-        if (!is_valid_phone($text)) {
-            sendMessage($chat_id, $lang === 'ru' ? "Неверный формат телефона. Попробуйте снова." : "Invalid phone format. Try again.");
-            break;
-        }
+    $users[$user_id]['name'] = $text;
+    $users[$user_id]['step'] = 'wait_phone';
+    saveUsers($users);
+
+    sendContactRequest($chat_id); // Показуємо кнопку
+    break;
+
+case 'wait_phone':
+    if (isset($update['message']['contact']) && $update['message']['contact']['user_id'] == $user_id) {
+        $users[$user_id]['phone'] = $update['message']['contact']['phone_number'];
+        $users[$user_id]['step'] = 'enter_email';
+        saveUsers($users);
+        sendMessage($chat_id, $lang === 'ru' ? "Контакт отримано. Тепер введіть вашу електронну пошту." : "Contact received. Now enter your email address.");
+    } else {
+        sendMessage($chat_id, $lang === 'ru' ? "Пожалуйста, нажмите кнопку ниже и поделитесь своим контактом." : "Please press the button below and share your contact.");
+        sendContactRequest($chat_id);
+    }
+    break;
+
         $users[$user_id]['phone'] = $text;
         $users[$user_id]['step'] = 'enter_email';
         saveUsers($users);
