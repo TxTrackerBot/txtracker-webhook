@@ -128,7 +128,7 @@ if ($callback_query) {
     $callback_id = $callback_query['id'];
     $admin_id = $callback_query['from']['id'];
 
-    if ($admin_id == ADMIN_CHAT_ID) {
+      if ($admin_id == ADMIN_CHAT_ID) {
         if (strpos($data, 'approve_payment:') === 0) {
             $uid = substr($data, strlen('approve_payment:'));
             global $payments;
@@ -136,9 +136,10 @@ if ($callback_query) {
                 $payments[$uid]['status'] = 'approved';
                 savePayments($payments);
 
-                sendMessage($payments[$uid]['chat_id'], "✅ Оплата подтверждена. Начинаем проверку квитанций.");
+                 sendMessage($payments[$uid]['chat_id'], "✅ Оплата подтверждена. Начинаем проверку квитанций.");
                 sendMessage(ADMIN_CHAT_ID, "✅ Оплата пользователя $uid подтверждена.");
 
+                   // Відповідь на callback
                 answerCallback($callback_id, 'Оплата подтверждена');
             }
             exit;
@@ -159,7 +160,7 @@ if ($callback_query) {
             exit;
         }
     } else {
-        answerCallback($callback_id, '⛔ У вас нет прав на это действие.', true);
+  answerCallback($callback_id, '⛔ У вас нет прав на это действие.', true);
         exit;
     }
 }
@@ -259,11 +260,11 @@ case 'wait_phone':
         $users[$user_id]['step'] = 'enter_email';
         saveUsers($users);
 
-        sendMessage($chat_id, $lang === 'ru'
+          sendMessage($chat_id, $lang === 'ru'
             ? "Контакт получен. Теперь введите ваш адрес электронной почты."
             : "Contact received. Now enter your email address.");
     } else {
-        sendMessage($chat_id, $lang === 'ru'
+         sendMessage($chat_id, $lang === 'ru'
             ? "Пожалуйста, нажмите кнопку ниже и поделитесь своим контактом."
             : "Please press the button below and share your contact.");
         sendContactRequest($chat_id);
@@ -341,8 +342,7 @@ default:
     saveUsers($users);
     break;
 
-
-   case 'waiting_for_payment':
+    case 'waiting_for_payment':
     $confirm_text = $lang === 'ru' ? 'я оплатил' : 'i have paid';
     if (mb_strtolower($text) === $confirm_text) {
         sendMessage($chat_id, $lang === 'ru'
@@ -391,25 +391,24 @@ if (isset($data['callback_query'])) {
 
         break;
 
-   case 'upload_receipts':
+ case 'upload_receipts':
     if (isset($message['photo'])) {
         $photo = end($message['photo']);
         $file_id = $photo['file_id'];
 
-        $postData = [
+     $postData = [
             'chat_id' => ADMIN_CHAT_ID,
             'photo' => $file_id,
             'caption' => "Фото квитанции от пользователя для проверки транзакций $user_id"
         ];
-
-        $ch = curl_init("https://api.telegram.org/bot" . TELEGRAM_TOKEN . "/sendPhoto");
+     $ch = curl_init("https://api.telegram.org/bot" . TELEGRAM_TOKEN . "/sendPhoto");
         curl_setopt($ch, CURLOPT_POST, true);
         curl_setopt($ch, CURLOPT_POSTFIELDS, $postData);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_exec($ch);
         curl_close($ch);
 
-        sendMessage(ADMIN_CHAT_ID, "Пользователь $user_id отправил фото квитанции для проверки транзакций.");
+  sendMessage(ADMIN_CHAT_ID, "Пользователь $user_id отправил фото квитанции для проверки транзакций.");
     } elseif (!empty($text)) {
         sendMessage(ADMIN_CHAT_ID, "Пользователь $user_id отправил квитанции для проверки транзакций:\n" . $text);
     }
