@@ -88,6 +88,7 @@ function sendContactRequest($chat_id) {
 }
 
 
+
 // --- Кнопки ---
 function languageButtons() {
     return [
@@ -122,12 +123,12 @@ logMessage("Received update: " . json_encode($input));
 $callback = $input['callback_query'] ?? null;
 
 // --- Обработка callback ---
-if ($callback) {
-    $data = $callback['data'];
-    $callback_id = $callback['id'];
-    $from_id = $callback['from']['id'];
+if ($callback_query) {
+    $data = $callback_query['data'];
+    $callback_id = $callback_query['id'];
+    $admin_id = $callback_query['from']['id'];
 
-    if ($from_id == ADMIN_CHAT_ID) {
+    if ($admin_id == ADMIN_CHAT_ID) {
         if (strpos($data, 'approve_payment:') === 0) {
             $uid = substr($data, strlen('approve_payment:'));
             global $payments;
@@ -135,14 +136,14 @@ if ($callback) {
                 $payments[$uid]['status'] = 'approved';
                 savePayments($payments);
 
-                sendMessage($payments[$uid]['chat_id'], "Оплата подтверждена. Начинаем проверку квитанций.");
-                sendMessage(ADMIN_CHAT_ID, "Оплата пользователя $uid подтверждена.");
+                sendMessage($payments[$uid]['chat_id'], "✅ Оплата подтверждена. Начинаем проверку квитанций.");
+                sendMessage(ADMIN_CHAT_ID, "✅ Оплата пользователя $uid подтверждена.");
 
-                // Відповідь на callback
                 answerCallback($callback_id, 'Оплата подтверждена');
             }
             exit;
         }
+
         if (strpos($data, 'reject_payment:') === 0) {
             $uid = substr($data, strlen('reject_payment:'));
             global $payments;
@@ -150,15 +151,15 @@ if ($callback) {
                 $payments[$uid]['status'] = 'rejected';
                 savePayments($payments);
 
-                sendMessage($payments[$uid]['chat_id'], "Оплата не подтверждена. Пожалуйста, свяжитесь с нами.");
-                sendMessage(ADMIN_CHAT_ID, "Оплата пользователя $uid отклонена.");
+                sendMessage($payments[$uid]['chat_id'], "❌ Оплата не подтверждена. Пожалуйста, свяжитесь с нами.");
+                sendMessage(ADMIN_CHAT_ID, "❌ Оплата пользователя $uid отклонена.");
 
                 answerCallback($callback_id, 'Оплата отклонена');
             }
             exit;
         }
     } else {
-        answerCallback($callback_id, 'У вас нет прав на это действие.', true);
+        answerCallback($callback_id, '⛔ У вас нет прав на это действие.', true);
         exit;
     }
 }
@@ -258,12 +259,17 @@ case 'wait_phone':
         $users[$user_id]['step'] = 'enter_email';
         saveUsers($users);
 
-        sendMessage($chat_id, $lang === 'ru' ? "Контакт получен. Тепер введите вашу електронну почту." : "Contact received. Now enter your email address.");
+        sendMessage($chat_id, $lang === 'ru'
+            ? "Контакт получен. Теперь введите ваш адрес электронной почты."
+            : "Contact received. Now enter your email address.");
     } else {
-        sendMessage($chat_id, $lang === 'ru' ? "Пожалуйста, нажмите кнопку ниже и поделитесь своим контактом." : "Please press the button below and share your contact.");
+        sendMessage($chat_id, $lang === 'ru'
+            ? "Пожалуйста, нажмите кнопку ниже и поделитесь своим контактом."
+            : "Please press the button below and share your contact.");
         sendContactRequest($chat_id);
     }
     break;
+
 
 
         $users[$user_id]['phone'] = $text;
@@ -318,35 +324,32 @@ case 'wait_phone':
             ]);
 
             // Сохраняем платеж как ожидающий
-            $payments[$user_id] = [
-                'chat_id' => $chat_id,
-                'amount' => $sum,
-                'status' => 'pending',
-                'timestamp' => time(),
-            ];
-            savePayments($payments);
-        } else {
-            sendMessage($chat_id, $lang === 'ru' ? "Платёж отменён. Напишите /start чтобы начать заново." : "Payment cancelled. Type /start to begin again.");
-            unset($users[$user_id]);
-            saveUsers($users);
-        }
-        break;
+$payments[$user_id] = [
+    'chat_id' => $chat_id,
+    'amount' => $sum,
+    'status' => 'pending',
+    'timestamp' => time(),
+];
+savePayments($payments);
+break;
 
-    case 'waiting_for_payment':
-        $confirm_text = $lang === 'ru' ? 'я оплатил' : 'i have paid';
-        if (mb_strtolower($text) === $confirm_text) {
-            sendMessage($chat_id, $lang === 'ru'
-                ? "Спасибо! Пожалуйста, прикрепите фото или скриншот перевода, на котором видны:  
-- Хеш транзакции (TXID)  
-- Сумма перевода  
-- Дата совершения операции  
-Это необходимо для подтверждения оплаты."
-                : "Thank you!
-Please attach a photo or screenshot of the transaction that clearly shows:
-- Transaction hash (TXID)
-- Amount sent
-- Date of the transaction
-This is required to confirm your payment.");
+default:
+    sendMessage($chat_id, $lang === 'ru'
+        ? "Платёж отменён. Напишите /start чтобы начать заново."
+        : "Payment cancelled. Type /start to begin again.");
+    unset($users[$user_id]);
+    saveUsers($users);
+    break;
+
+
+   case 'waiting_for_payment':
+    $confirm_text = $lang === 'ru' ? 'я оплатил' : 'i have paid';
+    if (mb_strtolower($text) === $confirm_text) {
+        sendMessage($chat_id, $lang === 'ru'
+            ? "Спасибо! Пожалуйста, прикрепите фото или скриншот перевода, на котором видны:\n- Хеш транзакции (TXID)\n- Сумма перевода\n- Дата совершения операции\nЭто необходимо для подтверждения оплаты."
+            : "Thank you!\nPlease attach a photo or screenshot of the transaction that clearly shows:\n- Transaction hash (TXID)\n- Amount sent\n- Date of the transaction\nThis is required to confirm your payment.");
+    }
+    break;
 
             // Обновляем платеж, если нужно
             $payments[$user_id] = [
@@ -358,18 +361,18 @@ This is required to confirm your payment.");
             savePayments($payments);
 
             // Отправляем админу сообщение с кнопками подтверждения
-            $approveKeyboard = [
-            'inline_keyboard' => [
-                [
-                    ['text' => '✅ Подтвердить оплату', 'callback_data' => 'approve_payment:' . $user_id],
-                    ['text' => '❌ Отклонить оплату', 'callback_data' => 'reject_payment:' . $user_id]
-                ]
-            ]
-        ];
+   $approveKeyboard = [
+    'inline_keyboard' => [
+        [
+            ['text' => '✅ Подтвердить оплату', 'callback_data' => 'approve_payment:' . $user_id],
+            ['text' => '❌ Отклонить оплату', 'callback_data' => 'reject_payment:' . $user_id]
+        ]
+    ]
+];
 
-        sendPhoto($adminId, $file_id, "Новая оплата от пользователя <b>$user_id</b>.", $approveKeyboard);
-        sendMessage($chat_id, "📤 Ваш чек отправлена на проверку. Ожидайте подтверждение.");
-    }
+sendPhoto($adminId, $file_id, "Новая оплата от пользователя <b>$user_id</b>.", $approveKeyboard);
+    sendMessage($chat_id, "📤 Ваш чек отправлен на проверку. Ожидайте подтверждение.");
+    break;
 }
 
 if (isset($data['callback_query'])) {
@@ -388,37 +391,37 @@ if (isset($data['callback_query'])) {
 
         break;
 
-    case 'upload_receipts':
-        if (isset($message['photo'])) {
-            sendMessage(ADMIN_CHAT_ID, "Пользователь $user_id отправил фото квитанции для проверки транзакций.");
-            $photo = end($message['photo']);
-            $file_id = $photo['file_id'];
+   case 'upload_receipts':
+    if (isset($message['photo'])) {
+        $photo = end($message['photo']);
+        $file_id = $photo['file_id'];
 
-            $sendPhotoUrl = "https://api.telegram.org/bot" . TELEGRAM_TOKEN . "/sendPhoto";
-            $postData = [
-                'chat_id' => ADMIN_CHAT_ID,
-                'photo' => $file_id,
-                'caption' => "Фото квитанции от пользователя для проверки транзакций $user_id"
-            ];
-            $ch = curl_init($sendPhotoUrl);
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, $postData);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_exec($ch);
-            curl_close($ch);
-        } elseif (!empty($text)) {
-            sendMessage(ADMIN_CHAT_ID, "Пользователь $user_id отправил квитанции для проверки транзакций:\n" . $text);
-        }
+        $postData = [
+            'chat_id' => ADMIN_CHAT_ID,
+            'photo' => $file_id,
+            'caption' => "Фото квитанции от пользователя для проверки транзакций $user_id"
+        ];
 
-        sendMessage($chat_id, $lang === 'ru'
-            ? "Спасибо! Квитанции отправлены на проверку. Мы свяжемся с вами после анализа."
-            : "Thank you! Receipts sent for review. We will get back to you after analysis.");
+        $ch = curl_init("https://api.telegram.org/bot" . TELEGRAM_TOKEN . "/sendPhoto");
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $postData);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_exec($ch);
+        curl_close($ch);
 
-        unset($users[$user_id]);
-        saveUsers($users);
-        break;
+        sendMessage(ADMIN_CHAT_ID, "Пользователь $user_id отправил фото квитанции для проверки транзакций.");
+    } elseif (!empty($text)) {
+        sendMessage(ADMIN_CHAT_ID, "Пользователь $user_id отправил квитанции для проверки транзакций:\n" . $text);
+    }
 
-    default:
-        sendMessage($chat_id, $lang === 'ru' ? "Напишите /start чтобы начать заново." : "Type /start to begin again.");
-        break;
-}
+    sendMessage($chat_id, $lang === 'ru'
+        ? "Спасибо! Квитанции отправлены на проверку. Мы свяжемся с вами после анализа."
+        : "Thank you! Receipts sent for review. We will get back to you after analysis.");
+
+    unset($users[$user_id]);
+    saveUsers($users);
+    break;
+
+default:
+    sendMessage($chat_id, $lang === 'ru' ? "Напишите /start чтобы начать заново." : "Type /start to begin again.");
+    break;
